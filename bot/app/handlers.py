@@ -1,14 +1,16 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart
 import app.keyboard as kb
 
 router = Router()
 
+# Старт
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     await message.answer(text=f'Здравствуйте, {message.from_user.first_name}\nЧтобы сделать заказ, нажмите "Меню"', reply_markup=await kb.main())
 
+# Списки с полным меню
 selected_Основное_меню = ['Суп', 'Гарнир', 'Салат', 'Мясное блюдо', '🔙Выбор раздела']
 selected_Суп = ['Крем-суп из тыквы', 'Том Ям', 'Минестроне', 'Борщ', '🔙Основное меню']
 selected_Салат = ['Цезарь с курицей', 'Греческий салат', 'Оливье', 'Салат с тунцом', '🔙Основное меню']
@@ -20,6 +22,7 @@ selected_Горячие_напитки = ['Американо', 'Капучин�
 selected_Холодные_напитки = ['Домашний лимонад', 'Морс клюквенный', 'Айсти с лимоном', 'Апельсиновый фреш', '🔙Напитки и десерты']
 selected_Десерт = ['Чизкейк', 'Тирамису', 'Шоколадный фондан', 'Ягодный тарт', '🔙Напитки и десерты']
 
+# Словарь с продуктами и ценами
 products = {
     'Крем-суп из тыквы': 250,
     'Том Ям': 250,
@@ -55,9 +58,10 @@ products = {
 }
 
 
-user_cart = {}
-order_counter = 1
+user_cart = {} # Корзина пользователя
+order_counter = 1 # Номер заказа
 
+# Добавление в корзину
 async def add_to_cart(user_id, product_name):
     if user_id not in user_cart:
         user_cart[user_id] = {}
@@ -66,6 +70,7 @@ async def add_to_cart(user_id, product_name):
     else:
         user_cart[user_id][product_name] = {'price': products[product_name], 'quantity': 1}
 
+# Отображение корзины
 async def show_cart(user_id):
     if user_id not in user_cart or not user_cart[user_id]:
         return 'Ваша корзина пуста.'
@@ -79,6 +84,7 @@ async def show_cart(user_id):
     cart_text += f'\n💰 Общая сумма: {total_price} руб'
     return cart_text
 
+# Хендлеры для перехода в корзину
 @router.message(F.text == 'Корзина')
 async def cart_handler(message: Message):
     cart_info = await show_cart(message.from_user.id)
@@ -89,6 +95,7 @@ async def cart_handler(callback: CallbackQuery):
     cart_info = await show_cart(callback.from_user.id)
     await callback.message.edit_text(text=str(cart_info), reply_markup=await kb.cart_buttons())
 
+# Выбор товара для редактирования
 @router.callback_query(F.data == 'edit_quantity')
 async def edit_quantity_handler(callback: CallbackQuery):
     if callback.from_user.id not in user_cart or not user_cart[callback.from_user.id]:
@@ -97,12 +104,14 @@ async def edit_quantity_handler(callback: CallbackQuery):
     await callback.message.edit_text(text='Выберите товар для редактирования:',
                                      reply_markup=await kb.create_edit_quantity_buttons(user_cart[callback.from_user.id]))
 
+# Изменение количества товара
 @router.callback_query(F.data.startswith('edit_'))
 async def edit_product_handler(callback: CallbackQuery):
     product = callback.data.split('_', 1)[1]
     await callback.message.edit_text(text=f'Изменение количества для {product}:',
                                      reply_markup=await kb.quantity_buttons(product))
 
+# +
 @router.callback_query(F.data.startswith('increase_'))
 async def increase_quantity(callback: CallbackQuery):
     product = callback.data.split('_', 1)[1]
@@ -110,6 +119,7 @@ async def increase_quantity(callback: CallbackQuery):
     await callback.answer('Количество увеличено.')
     await callback.message.edit_reply_markup(reply_markup=await kb.quantity_buttons(product))
 
+# -
 @router.callback_query(F.data.startswith('decrease_'))
 async def decrease_quantity(callback: CallbackQuery):
     product = callback.data.split('_', 1)[1]
@@ -121,10 +131,11 @@ async def decrease_quantity(callback: CallbackQuery):
     if product in user_cart[callback.from_user.id]:
         await callback.message.edit_reply_markup(reply_markup=await kb.quantity_buttons(product))
     else:
-        await callback.answer('Товар удалён из корзины.')
+        await callback.answer('Товар удалён из корзины.') # Если количество <0, то товар удаляется из корзины
         await callback.message.edit_text(text='Выберите товар для редактирования:',
                                          reply_markup=await kb.create_edit_quantity_buttons(user_cart[callback.from_user.id]))
 
+# Оплата
 @router.callback_query(F.data == 'pay_cart')
 async def pay_cart_handler(callback: CallbackQuery):
     global order_counter
@@ -142,6 +153,7 @@ async def pay_cart_handler(callback: CallbackQuery):
         for product, info in cart_content.items()
     )
 
+    # Вывод информации о заказе продавцу
     order_info = (f"У вас новый заказ:\n"
           f"Номер заказа: {order_counter}\n"
           f"Имя покупателя: {username}\n"
@@ -158,11 +170,13 @@ async def pay_cart_handler(callback: CallbackQuery):
     await callback.message.edit_text(text=f'Спасибо за оплату! Ваш номер заказа: {order_number}',
                                      reply_markup=await kb.to_new_order())
 
+# Очистка корзины
 @router.callback_query(F.data == 'clear_cart')
 async def clear_cart_handler(callback: CallbackQuery):
     await callback.message.edit_text(text='Вы уверены, что хотите очистить корзину?',
                                      reply_markup=await kb.create_clear_cart_buttons())
 
+# Подтверждение очистки
 @router.callback_query(F.data == 'confirm_clear_cart')
 async def confirm_clear_cart(callback: CallbackQuery):
     user_cart[callback.from_user.id] = {}
@@ -173,7 +187,7 @@ async def back_to_cart_handler(callback: CallbackQuery):
     cart_info = await show_cart(callback.from_user.id)
     await callback.message.edit_text(cart_info, reply_markup=await kb.cart_buttons())
 
-
+# Хендлеры для кнопки меню
 @router.message(F.text == 'Меню')
 async def menu(message: Message):
     await message.reply(text='Выберите раздел меню', reply_markup=await kb.options())
@@ -186,6 +200,7 @@ async def back_section(callback: CallbackQuery):
 async def new_order(callback: CallbackQuery):
     await callback.message.edit_text(text='Выберите раздел меню', reply_markup=await kb.options())
 
+# Хендлеры разделов меню
 @router.callback_query(F.data == 'selected_Основное_меню')
 async def main_menu(callback: CallbackQuery):
     await callback.answer(text='Вы выбрали основное меню')
